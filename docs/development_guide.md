@@ -30,6 +30,7 @@ cargo build
 - `web_service.py`：Web UI 和 HTTP API。
 - `client_builder.py`：客户端分发包生成。
 - `update_manager.py`：客户端更新包发布、manifest 生成、二进制下载。
+- `desktop_app.py`：tkinter 桌面管理端，复用服务端核心应用对象。
 - `app.py`：应用生命周期管理。
 - `tools/windows_tray.ps1`：Windows 免安装托盘控制器，使用 .NET WinForms NotifyIcon。
 

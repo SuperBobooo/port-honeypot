@@ -79,6 +79,13 @@ python tools/rust_client_integration.py
 
 Windows 托盘与本地通知：
 
+1. 运行 `python tools\desktop_gui.py`。
+2. 确认桌面 GUI 能显示统计、节点、日志和服务端日志。
+3. 在桌面 GUI 中点击“测试告警”，确认声音或提示触发。
+4. 关闭窗口时确认出现退出二次确认。
+
+服务端托盘控制器：
+
 1. 运行 `powershell -ExecutionPolicy Bypass -File tools\windows_tray.ps1`。
 2. 右键托盘图标，点击“Start server process”。
 3. 点击“Open dashboard”，确认管理台打开。

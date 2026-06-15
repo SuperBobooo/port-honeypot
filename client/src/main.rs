@@ -915,6 +915,7 @@ fn windows_local_alert(config: &ClientConfig, title: &str, message: &str, sound:
         );
         if let Err(err) = Command::new("powershell")
             .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+            .current_dir(env::temp_dir())
             .spawn()
         {
             log_line(config, "WARN", &format!("windows local alert failed: {}", err));
