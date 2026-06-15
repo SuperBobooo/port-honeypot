@@ -77,6 +77,14 @@ python tools/rust_client_integration.py
 3. 等待下一次心跳。
 4. 访问新增端口应产生攻击日志，访问已移除端口应失败。
 
+Windows 托盘与本地通知：
+
+1. 运行 `powershell -ExecutionPolicy Bypass -File tools\windows_tray.ps1`。
+2. 右键托盘图标，点击“Start server process”。
+3. 点击“Open dashboard”，确认管理台打开。
+4. 点击“Test alert”，确认托盘气泡提示出现。
+5. 启动客户端并访问诱捕端口，确认客户端本地声音和气泡通知触发。
+
 自动更新：
 
 1. 运行 `python tools\build_clients.py --target windows-x64 --server-host 127.0.0.1`。

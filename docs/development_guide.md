@@ -31,6 +31,7 @@ cargo build
 - `client_builder.py`：客户端分发包生成。
 - `update_manager.py`：客户端更新包发布、manifest 生成、二进制下载。
 - `app.py`：应用生命周期管理。
+- `tools/windows_tray.ps1`：Windows 免安装托盘控制器，使用 .NET WinForms NotifyIcon。
 
 ## 3. 客户端模块
 

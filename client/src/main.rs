@@ -879,11 +879,56 @@ fn ps_quote(path: &Path) -> String {
 }
 
 fn local_attack_notice(config: &ClientConfig, _event: &AttackEvent) {
+    let message = format!(
+        "{}:{} accessed local honeypot port {}",
+        _event.source_ip,
+        _event.source_port.unwrap_or_default(),
+        _event.target_port
+    );
+    windows_local_alert(config, "Port Honeypot Attack", &message, true);
     log_line(config, "INFO", "local attack notification emitted");
 }
 
 fn local_disconnect_notice(config: &ClientConfig) {
+    windows_local_alert(config, "Port Honeypot", "Server connection lost", true);
     log_line(config, "WARN", "server connection lost");
+}
+
+fn windows_local_alert(config: &ClientConfig, title: &str, message: &str, sound: bool) {
+    #[cfg(windows)]
+    {
+        let title = ps_string(title);
+        let message = ps_string(message);
+        let beep = if sound {
+            "[Console]::Beep(1800,180); [Console]::Beep(1200,180);"
+        } else {
+            ""
+        };
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; \
+             $n=New-Object System.Windows.Forms.NotifyIcon; \
+             $n.Icon=[System.Drawing.SystemIcons]::Warning; \
+             $n.Visible=$true; \
+             $n.ShowBalloonTip(5000,{},{},[System.Windows.Forms.ToolTipIcon]::Warning); \
+             {} Start-Sleep -Milliseconds 5500; $n.Dispose()",
+            title, message, beep
+        );
+        if let Err(err) = Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+            .spawn()
+        {
+            log_line(config, "WARN", &format!("windows local alert failed: {}", err));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (config, title, message, sound);
+    }
+}
+
+#[cfg(windows)]
+fn ps_string(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn log_line(config: &ClientConfig, level: &str, message: &str) {
