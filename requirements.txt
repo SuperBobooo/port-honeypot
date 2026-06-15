@@ -1,0 +1,2 @@
+# The management server intentionally uses only the Python standard library.
+# Keep this file for packaging tools and future optional integrations.

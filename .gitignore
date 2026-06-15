@@ -1,0 +1,14 @@
+data/
+logs/
+dist/client-bin/
+build-target/
+.downloads/
+.rust-standalone/
+.rustup/
+.cargo/
+channel-rust-stable.toml
+client/target/
+__pycache__/
+*.pyc
+*.bak
+rustup-init.exe

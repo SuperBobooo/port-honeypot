@@ -1,0 +1,26 @@
+{
+  "server_host": "127.0.0.1",
+  "server_port": 9443,
+  "shared_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "node_id": "",
+  "listen_ports": [
+    21,
+    22,
+    23,
+    80,
+    445,
+    3389
+  ],
+  "stealth_mode": true,
+  "stealth_fallback_to_tcp": true,
+  "autostart": true,
+  "hidden": true,
+  "heartbeat_interval_secs": 20,
+  "flush_interval_secs": 10,
+  "max_payload_bytes": 1024,
+  "spool_path": "data/client_spool.jsonl",
+  "log_path": "logs/client.log",
+  "update_enabled": false,
+  "update_interval_secs": 300,
+  "update_base_url": ""
+}
