@@ -83,7 +83,7 @@ class ClientBuilder:
             source_dir = Path(self.build_config.client_source_dir)
             if source_dir.exists():
                 for path in source_dir.rglob("*"):
-                    if path.is_file() and "target" not in path.parts:
+                    if path.is_file() and "target" not in path.parts and path.suffix != ".bak":
                         rel = path.relative_to(source_dir)
                         zf.write(path, f"{name}/source/client/{rel.as_posix()}")
 
