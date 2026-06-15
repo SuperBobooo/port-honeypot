@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -69,10 +70,20 @@ CREATE INDEX IF NOT EXISTS idx_node_commands_pending ON node_commands(node_id, d
 
 
 class Database:
-    def __init__(self, path: str | Path, crypto: FrameCrypto):
+    def __init__(
+        self,
+        path: str | Path,
+        crypto: FrameCrypto,
+        log_file: str | Path | None = None,
+        log_max_bytes: int = 2 * 1024 * 1024,
+        log_backup_count: int = 5,
+    ):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.crypto = crypto
+        self.log_file = Path(log_file) if log_file else None
+        self.log_max_bytes = max(int(log_max_bytes), 64 * 1024)
+        self.log_backup_count = max(int(log_backup_count), 1)
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -85,10 +96,16 @@ class Database:
             self._conn.close()
 
     def log(self, level: str, message: str) -> None:
+        ts = int(time.time())
+        level = level.upper()
         with self._lock:
+            try:
+                self._write_file_log(ts, level, message)
+            except OSError:
+                pass
             self._conn.execute(
                 "INSERT INTO server_logs(ts, level, message) VALUES (?, ?, ?)",
-                (int(time.time()), level.upper(), message),
+                (ts, level, message),
             )
             self._conn.commit()
 
@@ -275,6 +292,44 @@ class Database:
             "trend": [dict(row) for row in trend],
         }
 
+    def probe_activity(self, source_ip: str, window_seconds: int) -> dict[str, Any]:
+        since = int(time.time()) - max(int(window_seconds), 1)
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT
+                  COUNT(*) AS event_count,
+                  COUNT(DISTINCT target_port) AS distinct_ports,
+                  COUNT(DISTINCT node_id) AS distinct_nodes,
+                  MIN(ts) AS first_ts,
+                  MAX(ts) AS last_ts
+                FROM attack_events
+                WHERE source_ip=? AND ts >= ?
+                """,
+                (source_ip, since),
+            ).fetchone()
+            ports = self._conn.execute(
+                """
+                SELECT target_port, COUNT(*) AS count
+                FROM attack_events
+                WHERE source_ip=? AND ts >= ?
+                GROUP BY target_port
+                ORDER BY count DESC, target_port ASC
+                LIMIT 12
+                """,
+                (source_ip, since),
+            ).fetchall()
+        return {
+            "source_ip": source_ip,
+            "window_seconds": max(int(window_seconds), 1),
+            "event_count": int(row["event_count"] or 0),
+            "distinct_ports": int(row["distinct_ports"] or 0),
+            "distinct_nodes": int(row["distinct_nodes"] or 0),
+            "first_ts": row["first_ts"],
+            "last_ts": row["last_ts"],
+            "ports": [dict(port) for port in ports],
+        }
+
     def recent_server_logs(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
@@ -386,6 +441,30 @@ class Database:
         value["online"] = bool(value["online"])
         value["stealth_mode"] = bool(value["stealth_mode"])
         return value
+
+    def _write_file_log(self, ts: int, level: str, message: str) -> None:
+        if self.log_file is None:
+            return
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self._rotate_log_file()
+        line = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+        with self.log_file.open("a", encoding="utf-8") as handle:
+            handle.write(f"{line} [{level}] {message}\n")
+
+    def _rotate_log_file(self) -> None:
+        if self.log_file is None or not self.log_file.exists():
+            return
+        if self.log_file.stat().st_size < self.log_max_bytes:
+            return
+        oldest = self.log_file.with_name(f"{self.log_file.name}.{self.log_backup_count}")
+        if oldest.exists():
+            oldest.unlink()
+        for index in range(self.log_backup_count - 1, 0, -1):
+            src = self.log_file.with_name(f"{self.log_file.name}.{index}")
+            if src.exists():
+                dst = self.log_file.with_name(f"{self.log_file.name}.{index + 1}")
+                os.replace(src, dst)
+        os.replace(self.log_file, self.log_file.with_name(f"{self.log_file.name}.1"))
 
 
 def _as_optional_int(value: Any) -> int | None:

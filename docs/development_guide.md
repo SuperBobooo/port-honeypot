@@ -26,13 +26,14 @@ cargo build
 - `protocol.py`：长度前缀帧读写。
 - `database.py`：SQLite schema 与查询接口。
 - `tcp_service.py`：客户端接入和消息处理。
-- `alerts.py`：多通道告警。
+- `alerts.py`：多通道告警、限频和异常端口探测规则。
 - `web_service.py`：Web UI 和 HTTP API。
 - `client_builder.py`：客户端分发包生成。
 - `update_manager.py`：客户端更新包发布、manifest 生成、二进制下载。
 - `desktop_app.py`：tkinter 桌面管理端，复用服务端核心应用对象。
 - `app.py`：应用生命周期管理。
-- `tools/windows_tray.ps1`：Windows 免安装托盘控制器，使用 .NET WinForms NotifyIcon。
+- `tools/windows_tray.ps1`：服务端 Windows 免安装托盘控制器，使用 .NET WinForms NotifyIcon。
+- `tools/client_gui.ps1`：客户端 Windows 桌面控制器，提供配置、启动/停止、日志查看、自启动和托盘菜单。
 
 ## 3. 客户端模块
 
@@ -44,9 +45,11 @@ cargo build
 - `stealth`：平台隐身后端。
 - `spool`：本地队列和断线补发。
 - `transport`：服务端连接、心跳、上传。
-- `system`：自启动、托盘、弹窗、声音。
+- `system`：自启动、托盘、弹窗、声音、日志轮转。
 
 当前客户端已实现一个轻量 `ListenerManager`，负责运行时启动、停止和替换端口监听。服务端下发的节点命令会在心跳响应中返回，客户端收到后立即应用。
+
+客户端日志轮转由 `log_max_bytes` 和 `log_backup_count` 控制，默认 2MB、保留 5 份备份。服务端文件日志使用同名配置项，写入 `logs/server.log`，同时仍保留 SQLite `server_logs` 表供管理台查询。
 
 ## 4. 协议扩展
 

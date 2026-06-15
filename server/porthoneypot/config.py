@@ -49,6 +49,9 @@ class AlertConfig:
     event_types: list[str] = field(
         default_factory=lambda: ["attack", "node_disconnect", "abnormal_probe"]
     )
+    abnormal_probe_window_seconds: int = 120
+    abnormal_probe_distinct_ports: int = 4
+    abnormal_probe_min_events: int = 6
     local_sound: bool = True
     email: EmailConfig = field(default_factory=EmailConfig)
     dingtalk: WebhookConfig = field(default_factory=WebhookConfig)
@@ -69,6 +72,8 @@ class ServerConfig:
     shared_key_hex: str = field(default_factory=lambda: secrets.token_hex(32))
     database_path: str = "data/honeypot.db"
     log_dir: str = "logs"
+    log_max_bytes: int = 2 * 1024 * 1024
+    log_backup_count: int = 5
     tcp: TcpConfig = field(default_factory=TcpConfig)
     web: WebConfig = field(default_factory=WebConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)

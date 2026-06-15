@@ -24,10 +24,11 @@ flowchart LR
 
 - 配置加载：优先读取运行目录 `client_config.json`，否则使用编译时内置 `config/default_client.json`。
 - 端口监听：普通模式下对多个端口启动独立 TCP 监听线程，完成握手后最多读取 1KB 内容并主动断开。
-- 本地日志：所有运行状态、错误和访问事件写入 `logs/client.log`。
+- 本地日志：所有运行状态、错误和访问事件写入 `logs/client.log`，按 `log_max_bytes` 与 `log_backup_count` 自动轮转。
 - 断线补发：访问事件以 JSONL 形式写入 `data/client_spool.jsonl`，连接恢复后批量加密上传并清空。
 - 心跳保活：周期上报节点 ID、系统、架构、监听端口等状态。
 - 隐身模式：Linux PoC 已通过 raw TCP socket 捕获 SYN 包，并通过 `scripts/linux_stealth_setup.sh` 配置 iptables/nftables 阻断 RST。Windows 生产级隐身模式需要 WinDivert/NDIS 后端。
+- Windows 桌面控制：`tools/client_gui.ps1` 提供客户端主界面、配置编辑、启动/停止、日志查看、自启动管理、系统托盘打开/隐藏与退出确认。
 
 ## 4. 服务端设计
 
@@ -37,8 +38,8 @@ flowchart LR
 
 - `tcp_service.py`：多线程 TCP 接入服务，处理注册、心跳、事件上传。
 - `crypto.py`：认证加密帧，使用 HMAC-SHA256 派生密钥、生成流式密钥和完整性标签。
-- `database.py`：SQLite 存储节点、攻击事件、服务端日志、告警历史。攻击内容字段二次加密后入库。
-- `alerts.py`：本地声音、SMTP 邮件、钉钉、飞书、企业微信告警，支持频率限制。
+- `database.py`：SQLite 存储节点、攻击事件、服务端日志、告警历史。攻击内容字段二次加密后入库；服务端日志同时写入 `logs/server.log` 并支持轮转。
+- `alerts.py`：本地声音、SMTP 邮件、钉钉、飞书、企业微信告警，支持频率限制和异常端口探测规则。
 - `web_service.py`：内置 Web 管理台，提供节点、日志、统计、服务启停、告警测试和客户端生成。
 - `client_builder.py`：生成离线客户端配置包，包含内置配置、源码和可选预编译二进制。
 - `update_manager.py`：管理离线客户端更新包，生成 manifest，提供下载接口。
@@ -94,6 +95,8 @@ magic("PHP1") || nonce(16 bytes) || ciphertext || hmac_tag(32 bytes)
 - 节点断连。
 - 异常端口探测。
 
+异常端口探测默认按同一源 IP 在 `abnormal_probe_window_seconds` 时间窗内的事件数量与不同目标端口数量判定，满足阈值后触发 `abnormal_probe` 告警。
+
 告警通道包括：
 
 - 本地声音提示。
@@ -120,7 +123,7 @@ magic("PHP1") || nonce(16 bytes) || ciphertext || hmac_tag(32 bytes)
 
 - 服务端：Python 标准库 + SQLite，Windows/Linux/macOS 均可运行。
 - 客户端：Rust release 构建启用 LTO 和 strip，目标为单二进制部署。
-- Windows 托盘、自启动与隐身捕获属于平台 API 能力，当前项目保留模块边界和部署说明，实际生产可接入 Shell_NotifyIcon、注册表启动项、WinDivert/NDIS 后端。
+- Windows 托盘与自启动已提供免安装 PowerShell/WinForms 控制器和客户端计划任务注册；生产级隐身捕获仍建议接入 WinDivert/NDIS 后端。
 - Linux 信创环境可通过 systemd 自启动、nftables/iptables 阻断 RST、raw socket 捕获 SYN。Linux 隐身模式 PoC 已具备真实捕获链路。
 
 ## 10. 安全边界

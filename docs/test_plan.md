@@ -70,6 +70,19 @@ python tools/rust_client_integration.py
 2. 同一源 IP 连续访问同一节点同一端口。
 3. 告警历史只应按限频间隔记录。
 
+异常端口探测告警：
+
+1. 将 `alerts.abnormal_probe_window_seconds` 设置为 120。
+2. 将 `alerts.abnormal_probe_distinct_ports` 设置为 4，`alerts.abnormal_probe_min_events` 设置为 6。
+3. 使用同一源 IP 在 120 秒内访问 6 次以上，目标端口覆盖至少 4 个不同端口。
+4. 服务端日志和告警历史应出现 `abnormal_probe` 对应告警记录。
+
+日志轮转：
+
+1. 将服务端 `log_max_bytes` 或客户端 `log_max_bytes` 临时调小。
+2. 连续产生运行日志。
+3. 确认 `logs/server.log.1` 或 `logs/client.log.1` 生成，新日志继续写入原始日志文件。
+
 远程控制：
 
 1. 客户端上线后，在管理台节点行点击“改端口”。
@@ -91,6 +104,15 @@ Windows 托盘与本地通知：
 3. 点击“Open dashboard”，确认管理台打开。
 4. 点击“Test alert”，确认托盘气泡提示出现。
 5. 启动客户端并访问诱捕端口，确认客户端本地声音和气泡通知触发。
+
+客户端桌面 GUI 与托盘：
+
+1. 运行 `powershell -ExecutionPolicy Bypass -File tools\client_gui.ps1`。
+2. 在 Config 页编辑服务端地址、监听端口和日志轮转参数，点击 “Save config”。
+3. 点击 “Start client” 启动客户端，确认状态显示 Running。
+4. 点击 “Hide to tray” 后双击托盘图标，确认主界面可重新打开。
+5. 点击 “Install autostart” 和 “Uninstall autostart”，确认命令输出无错误。
+6. 关闭窗口时应隐藏到托盘；托盘菜单 Exit 应出现退出确认。
 
 自动更新：
 
@@ -121,5 +143,5 @@ Linux 隐身模式 PoC：
 ## 5. 已知限制
 
 - 当前仓库没有附带预编译二进制，需本机安装 Rust 后构建。
-- 隐身 SYN 捕获为平台特权能力，当前实现提供后端边界和降级策略。
-- Windows 托盘图标、本地弹窗目前以服务端 Web 管理台和本地声音告警为主，生产化可按开发指南接入 Win32 托盘模块。
+- Linux 隐身 SYN 捕获 PoC 已实现，但仍需在真实 Linux/信创系统上完成 raw socket 与 RST 阻断实机验收。
+- Windows 生产级隐身模式仍需 WinDivert/NDIS 后端；当前 Windows 侧提供普通 TCP 蜜罐、桌面 GUI、托盘控制和本地通知。

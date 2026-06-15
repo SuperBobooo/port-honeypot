@@ -30,6 +30,7 @@ class AlertManager:
             f"被 {event.get('source_ip')}:{event.get('source_port') or '-'} 访问"
         )
         self.emit("attack", f"{event.get('node_id')}:{event.get('source_ip')}:{event.get('target_port')}", message)
+        self._abnormal_probe(event)
 
     def node_disconnect(self, node: dict[str, Any]) -> None:
         message = f"节点 {node.get('node_id')} 已断连，最后心跳 {node.get('last_heartbeat')}"
@@ -59,6 +60,24 @@ class AlertManager:
         self._send_dingtalk(event_type, message)
         self._send_plain_webhook("feishu", self.config.feishu, message)
         self._send_plain_webhook("wecom", self.config.wecom, message)
+
+    def _abnormal_probe(self, event: dict[str, Any]) -> None:
+        source_ip = str(event.get("source_ip", "")).strip()
+        if not source_ip or "abnormal_probe" not in self.config.event_types:
+            return
+        activity = self.database.probe_activity(source_ip, self.config.abnormal_probe_window_seconds)
+        if activity["event_count"] < self.config.abnormal_probe_min_events:
+            return
+        if activity["distinct_ports"] < self.config.abnormal_probe_distinct_ports:
+            return
+        ports = ", ".join(str(row["target_port"]) for row in activity["ports"][:8])
+        message = (
+            f"异常端口探测：源 IP {source_ip} 在 {activity['window_seconds']} 秒内 "
+            f"触发 {activity['event_count']} 次访问，涉及 {activity['distinct_ports']} 个端口"
+        )
+        if ports:
+            message += f"，主要端口：{ports}"
+        self.emit("abnormal_probe", source_ip, message)
 
     def _local_sound(self) -> None:
         if platform.system().lower() != "windows":

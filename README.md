@@ -5,7 +5,8 @@
 项目包含：
 
 - Rust 客户端节点：监听诱捕端口、记录访问、加密上报、断线补发、心跳保活。
-- Python 服务端管理台：加密 TCP 接入、SQLite 存储、节点管理、日志检索、统计图表、多通道告警、客户端配置包生成。
+- Python 服务端管理台：加密 TCP 接入、SQLite 存储、节点管理、日志检索、统计图表、多通道告警、异常探测告警、客户端配置包生成。
+- Windows 客户端桌面控制器：配置编辑、启动/停止、状态查看、日志查看、自启动和托盘菜单。
 - 离线优先设计：服务端只依赖 Python 标准库，数据库使用 SQLite，本地内网可直接运行。
 - 文档与测试：系统设计、部署手册、开发指南、测试方案、实训报告模板。
 
@@ -36,6 +37,8 @@ data/honeypot.db
 data/packages/
 logs/server.log
 ```
+
+客户端与服务端日志都支持按大小自动轮转，默认 2MB、保留 5 份备份。
 
 ## 客户端
 
@@ -96,6 +99,14 @@ powershell -ExecutionPolicy Bypass -File tools\windows_tray.ps1
 托盘菜单支持打开管理台、启动服务端进程、启动/停止 TCP 服务、测试告警、停止声音和退出托盘。
 
 Windows 客户端捕获访问或检测到服务端断连时，会触发本地声音提示和托盘气泡通知。
+
+Windows 客户端桌面控制器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\client_gui.ps1
+```
+
+该工具支持打开/隐藏主界面、启动/停止客户端、编辑 `client_config.json`、查看客户端日志、安装/卸载自启动，并常驻系统托盘。
 
 ## 自动更新
 

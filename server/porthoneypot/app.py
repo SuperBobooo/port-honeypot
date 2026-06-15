@@ -22,7 +22,13 @@ class HoneypotApp:
         self.config_path = config_path
         self.config = load_config(config_path)
         self.crypto = FrameCrypto(self.config.shared_key_hex)
-        self.database = Database(self.config.database_path, self.crypto)
+        self.database = Database(
+            self.config.database_path,
+            self.crypto,
+            Path(self.config.log_dir) / "server.log",
+            self.config.log_max_bytes,
+            self.config.log_backup_count,
+        )
         self.alerts = AlertManager(self.config.alerts, self.database)
         self.tcp_service = TcpService(
             self.config.tcp.host,

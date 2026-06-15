@@ -39,6 +39,10 @@ struct ClientConfig {
     max_payload_bytes: usize,
     spool_path: String,
     log_path: String,
+    #[serde(default = "default_log_max_bytes")]
+    log_max_bytes: u64,
+    #[serde(default = "default_log_backup_count")]
+    log_backup_count: usize,
     #[serde(default = "default_update_enabled")]
     update_enabled: bool,
     #[serde(default = "default_update_interval_secs")]
@@ -348,6 +352,14 @@ fn default_update_enabled() -> bool {
 
 fn default_update_interval_secs() -> u64 {
     300
+}
+
+fn default_log_max_bytes() -> u64 {
+    2 * 1024 * 1024
+}
+
+fn default_log_backup_count() -> usize {
+    5
 }
 
 fn ensure_node_id(config: &ClientConfig) -> io::Result<String> {
@@ -992,10 +1004,40 @@ fn log_line(config: &ClientConfig, level: &str, message: &str) {
     let line = format!("{} [{}] {}\n", ts, level, message);
     let path = Path::new(&config.log_path);
     if ensure_parent(path).is_ok() {
+        let _ = rotate_log_if_needed(path, config.log_max_bytes, config.log_backup_count);
         if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
             let _ = file.write_all(line.as_bytes());
         }
     }
+}
+
+fn rotate_log_if_needed(path: &Path, max_bytes: u64, backup_count: usize) -> io::Result<()> {
+    let max_bytes = max_bytes.max(64 * 1024);
+    let backup_count = backup_count.max(1);
+    if !path.exists() || path.metadata()?.len() < max_bytes {
+        return Ok(());
+    }
+
+    let oldest = backup_path(path, backup_count);
+    if oldest.exists() {
+        fs::remove_file(&oldest)?;
+    }
+    for index in (1..backup_count).rev() {
+        let src = backup_path(path, index);
+        if src.exists() {
+            fs::rename(&src, backup_path(path, index + 1))?;
+        }
+    }
+    fs::rename(path, backup_path(path, 1))?;
+    Ok(())
+}
+
+fn backup_path(path: &Path, index: usize) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "client.log".to_string());
+    path.with_file_name(format!("{}.{}", name, index))
 }
 
 fn hostname() -> String {

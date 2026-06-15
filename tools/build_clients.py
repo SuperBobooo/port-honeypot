@@ -48,6 +48,8 @@ def main() -> None:
         "max_payload_bytes": 1024,
         "spool_path": "data/client_spool.jsonl",
         "log_path": "logs/client.log",
+        "log_max_bytes": 2 * 1024 * 1024,
+        "log_backup_count": 5,
         "update_enabled": not args.disable_update,
         "update_interval_secs": 300,
         "update_base_url": f"http://{args.server_host}:{args.web_port or server_config.web.port}",

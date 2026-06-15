@@ -34,6 +34,8 @@ def default_client_config(server_config: ServerConfig) -> dict[str, Any]:
         "max_payload_bytes": 1024,
         "spool_path": "data/client_spool.jsonl",
         "log_path": "logs/client.log",
+        "log_max_bytes": 2 * 1024 * 1024,
+        "log_backup_count": 5,
         "update_enabled": True,
         "update_interval_secs": 300,
         "update_base_url": f"http://127.0.0.1:{server_config.web.port}",
@@ -74,6 +76,9 @@ class ClientBuilder:
             zf.writestr(f"{name}/client_config.json", json.dumps(config, ensure_ascii=False, indent=2))
             zf.writestr(f"{name}/README.txt", self._package_readme(platforms))
             zf.writestr(f"{name}/build_targets.txt", "\n".join(TARGETS[p] for p in platforms if p in TARGETS))
+            client_gui = Path("tools/client_gui.ps1")
+            if any(platform.startswith("windows") for platform in platforms) and client_gui.exists():
+                zf.write(client_gui, f"{name}/tools/client_gui.ps1")
 
             source_dir = Path(self.build_config.client_source_dir)
             if source_dir.exists():
@@ -108,6 +113,7 @@ class ClientBuilder:
 1. 若 bin/ 目录中存在当前平台二进制，直接运行 porthoneypot-client。
 2. 若未包含二进制，进入 source/client，将 client_config.json 复制为 config/default_client.json 后执行 cargo build --release。
 3. client_config.json 中的 server_host、server_port、shared_key_hex 会在编译后内置进客户端；分发部署时请不要随意泄露。
+4. Windows 平台可运行 tools/client_gui.ps1 打开客户端桌面管理器和托盘菜单。
 
 隐身模式说明:
 隐身 SYN 捕获需要管理员/root 权限和平台包捕获/RST 阻断后端。默认启用 stealth_fallback_to_tcp，未检测到后端时会降级为普通 TCP 诱捕监听。

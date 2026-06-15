@@ -108,6 +108,15 @@ $menu.Items.Add("-") | Out-Null
 
 $exitItem = $menu.Items.Add("Exit tray")
 $exitItem.add_Click({
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        "Exit the Port Honeypot tray controller?",
+        "Exit confirmation",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Question
+    )
+    if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+        return
+    }
     $script:NotifyIcon.Visible = $false
     $script:NotifyIcon.Dispose()
     [System.Windows.Forms.Application]::Exit()
