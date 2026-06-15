@@ -141,17 +141,29 @@ WantedBy=multi-user.target
 
 隐身模式需要捕获 SYN 包且阻止系统自动回复 RST，必须具备管理员/root 权限。
 
-Linux 可参考：
+Linux 节点执行：
 
 ```bash
-iptables -A OUTPUT -p tcp --sport 3389 --tcp-flags RST RST -j DROP
+sudo scripts/linux_stealth_setup.sh setup 22,80,3389
+sudo ./porthoneypot-client run
 ```
 
-或使用 nftables 等价规则。
+也可仅授权 raw socket 能力：
+
+```bash
+sudo setcap cap_net_raw+ep ./porthoneypot-client
+./porthoneypot-client run
+```
+
+清理 RST 阻断规则：
+
+```bash
+sudo scripts/linux_stealth_setup.sh cleanup 22,80,3389
+```
 
 Windows 生产实现建议接入 WinDivert 或 NDIS 过滤驱动，用户态程序负责解析 SYN 并上报服务端。
 
-当前客户端默认启用 `stealth_fallback_to_tcp`：隐身后端不可用时降级为普通 TCP 诱捕，保证实训环境可运行。
+当前客户端默认启用 `stealth_fallback_to_tcp`：隐身后端不可用时降级为普通 TCP 诱捕，保证实训环境可运行。严格隐身测试建议设置为 `false`。
 
 ## 7. 告警配置
 

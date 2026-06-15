@@ -99,6 +99,15 @@ Windows 托盘与本地通知：
 3. 确认 `data/updates/windows-x64/manifest.json` 存在。
 4. 运行 `python tools\rust_client_integration.py`，脚本会验证客户端 `check-update` 可读取 manifest。
 
+Linux 隐身模式 PoC：
+
+1. 在 Linux 节点准备 `client_config.json`，设置 `stealth_mode=true`、`stealth_fallback_to_tcp=false`。
+2. 执行 `sudo scripts/linux_stealth_setup.sh setup 22,80,3389`。
+3. 执行 `sudo ./porthoneypot-client run`。
+4. 从另一台主机执行 `nmap -sS -Pn -p 22,80,3389 <client-ip>`。
+5. 服务端管理台应出现 `mode=stealth` 的 SYN 探测日志。
+6. 执行 `sudo scripts/linux_stealth_setup.sh cleanup 22,80,3389` 清理规则。
+
 ## 4. 兼容性矩阵
 
 | 平台 | 服务端 | 客户端普通模式 | 客户端隐身模式 |

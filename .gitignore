@@ -2,6 +2,7 @@ data/
 logs/
 dist/client-bin/
 build-target/
+build-target-test/
 .downloads/
 .rust-standalone/
 .rustup/

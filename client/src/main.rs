@@ -251,7 +251,7 @@ fn main() -> io::Result<()> {
     ));
 
     if config.stealth_mode {
-        let ok = start_stealth_backend(&config);
+        let ok = start_stealth_backend(shared_config.clone(), running.clone(), spool_lock.clone());
         if !ok && config.stealth_fallback_to_tcp {
             log_line(&config, "WARN", "stealth backend unavailable, falling back to general TCP honeypot mode");
             listener_manager.start_all();
@@ -601,13 +601,68 @@ fn clear_spool(path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn start_stealth_backend(config: &ClientConfig) -> bool {
-    log_line(
-        config,
-        "WARN",
-        "stealth SYN backend is not active in this build; raw packet capture and RST blocking require privileged platform integration",
-    );
-    false
+fn start_stealth_backend(
+    config: Arc<Mutex<ClientConfig>>,
+    running: Arc<AtomicBool>,
+    spool_lock: Arc<Mutex<()>>,
+) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        linux_stealth::start(config, running, spool_lock)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let cfg = config.lock().unwrap().clone();
+        log_line(
+            &cfg,
+            "WARN",
+            "stealth SYN backend is only implemented for Linux in this PoC build; falling back if enabled",
+        );
+        let _ = (running, spool_lock);
+        false
+    }
+}
+
+#[cfg(any(test, target_os = "linux"))]
+fn parse_ipv4_syn_packet(packet: &[u8], listen_ports: &[u16]) -> Option<AttackEvent> {
+    if packet.len() < 40 {
+        return None;
+    }
+    let version = packet[0] >> 4;
+    let ihl = usize::from(packet[0] & 0x0f) * 4;
+    if version != 4 || ihl < 20 || packet.len() < ihl + 20 {
+        return None;
+    }
+    if packet[9] != 6 {
+        return None;
+    }
+    let source_ip =
+        std::net::Ipv4Addr::new(packet[12], packet[13], packet[14], packet[15]).to_string();
+    let dest_ip = std::net::Ipv4Addr::new(packet[16], packet[17], packet[18], packet[19]).to_string();
+    let tcp = &packet[ihl..];
+    let source_port = u16::from_be_bytes([tcp[0], tcp[1]]);
+    let target_port = u16::from_be_bytes([tcp[2], tcp[3]]);
+    if !listen_ports.contains(&target_port) {
+        return None;
+    }
+    let flags = tcp[13];
+    let syn = flags & 0x02 != 0;
+    let ack = flags & 0x10 != 0;
+    if !syn || ack {
+        return None;
+    }
+    let ttl = packet[8];
+    Some(AttackEvent {
+        ts: now_ts(),
+        source_ip,
+        source_port: Some(source_port),
+        target_port,
+        mode: "stealth".to_string(),
+        content: format!(
+            "SYN probe to {}:{} ttl={} flags=0x{:02x}",
+            dest_ip, target_port, ttl, flags
+        ),
+    })
 }
 
 fn configure_autostart(config: &ClientConfig) {
@@ -1009,4 +1064,130 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+#[cfg(target_os = "linux")]
+mod linux_stealth {
+    use super::*;
+    use std::collections::HashMap;
+    use std::os::raw::{c_int, c_void};
+
+    const AF_INET: c_int = 2;
+    const SOCK_RAW: c_int = 3;
+    const IPPROTO_TCP: c_int = 6;
+
+    unsafe extern "C" {
+        fn socket(domain: c_int, socket_type: c_int, protocol: c_int) -> c_int;
+        fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
+        fn close(fd: c_int) -> c_int;
+    }
+
+    pub fn start(
+        config: Arc<Mutex<ClientConfig>>,
+        running: Arc<AtomicBool>,
+        spool_lock: Arc<Mutex<()>>,
+    ) -> bool {
+        let cfg = config.lock().unwrap().clone();
+        let fd = unsafe { socket(AF_INET, SOCK_RAW, IPPROTO_TCP) };
+        if fd < 0 {
+            log_line(
+                &cfg,
+                "ERROR",
+                &format!(
+                    "failed to open Linux raw TCP socket: {}; run as root or grant CAP_NET_RAW",
+                    io::Error::last_os_error()
+                ),
+            );
+            return false;
+        }
+        log_line(
+            &cfg,
+            "INFO",
+            "Linux stealth SYN backend started; RST blocking must be configured with scripts/linux_stealth_setup.sh",
+        );
+        thread::spawn(move || capture_loop(fd, config, running, spool_lock));
+        true
+    }
+
+    fn capture_loop(
+        fd: c_int,
+        config: Arc<Mutex<ClientConfig>>,
+        running: Arc<AtomicBool>,
+        spool_lock: Arc<Mutex<()>>,
+    ) {
+        let mut buf = [0u8; 65535];
+        let mut recent: HashMap<(String, u16, u16), u64> = HashMap::new();
+        while running.load(Ordering::SeqCst) {
+            let size = unsafe { recv(fd, buf.as_mut_ptr() as *mut c_void, buf.len(), 0) };
+            if size < 0 {
+                let cfg = config.lock().unwrap().clone();
+                log_line(&cfg, "WARN", &format!("raw socket recv failed: {}", io::Error::last_os_error()));
+                thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+            let cfg = config.lock().unwrap().clone();
+            let Some(event) = parse_ipv4_syn_packet(&buf[..size as usize], &cfg.listen_ports) else {
+                continue;
+            };
+
+            let key = (
+                event.source_ip.clone(),
+                event.source_port.unwrap_or_default(),
+                event.target_port,
+            );
+            let now = now_ts();
+            if recent.get(&key).is_some_and(|last| now.saturating_sub(*last) < 2) {
+                continue;
+            }
+            recent.insert(key, now);
+            if recent.len() > 4096 {
+                recent.retain(|_, last| now.saturating_sub(*last) < 30);
+            }
+
+            if let Err(err) = append_event(&cfg, &spool_lock, &event) {
+                log_line(&cfg, "ERROR", &format!("failed to spool stealth event: {}", err));
+            } else {
+                local_attack_notice(&cfg, &event);
+            }
+        }
+        unsafe {
+            close(fd);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tcp_packet(target_port: u16, flags: u8) -> Vec<u8> {
+        let mut packet = vec![0u8; 40];
+        packet[0] = 0x45;
+        packet[8] = 64;
+        packet[9] = 6;
+        packet[12..16].copy_from_slice(&[192, 0, 2, 10]);
+        packet[16..20].copy_from_slice(&[198, 51, 100, 20]);
+        packet[20..22].copy_from_slice(&49152u16.to_be_bytes());
+        packet[22..24].copy_from_slice(&target_port.to_be_bytes());
+        packet[32] = 0x50;
+        packet[33] = flags;
+        packet
+    }
+
+    #[test]
+    fn parses_configured_stealth_syn() {
+        let event = parse_ipv4_syn_packet(&tcp_packet(3389, 0x02), &[22, 80, 3389])
+            .expect("configured SYN should be captured");
+        assert_eq!(event.source_ip, "192.0.2.10");
+        assert_eq!(event.source_port, Some(49152));
+        assert_eq!(event.target_port, 3389);
+        assert_eq!(event.mode, "stealth");
+        assert!(event.content.contains("SYN probe"));
+    }
+
+    #[test]
+    fn ignores_syn_ack_and_unconfigured_ports() {
+        assert!(parse_ipv4_syn_packet(&tcp_packet(3389, 0x12), &[3389]).is_none());
+        assert!(parse_ipv4_syn_packet(&tcp_packet(443, 0x02), &[3389]).is_none());
+    }
 }

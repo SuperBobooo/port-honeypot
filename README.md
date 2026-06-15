@@ -126,7 +126,7 @@ docs/                    设计、部署、开发、测试与实训文档
 
 ## 说明
 
-一般 TCP 诱捕模式完整可运行。隐身 SYN 捕获和阻断系统 RST 属于特权级网络能力，客户端已预留平台后端接口与运行时提示；在 Linux 上应配合 raw socket/nftables 或 iptables，在 Windows 上应配合 WinDivert/NDIS 驱动实现生产级透明捕获。详见 `docs/system_design.md` 与 `docs/deployment_guide.md`。
+一般 TCP 诱捕模式完整可运行。Linux 隐身 SYN 捕获 PoC 已实现，配合 `scripts/linux_stealth_setup.sh` 可阻断 RST 并捕获 SYN 探测。Windows 生产级隐身模式仍需 WinDivert/NDIS 驱动。详见 `docs/linux_stealth_poc.md`、`docs/system_design.md` 与 `docs/deployment_guide.md`。
 
 ## 验证
 

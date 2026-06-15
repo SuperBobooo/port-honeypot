@@ -27,7 +27,7 @@ flowchart LR
 - 本地日志：所有运行状态、错误和访问事件写入 `logs/client.log`。
 - 断线补发：访问事件以 JSONL 形式写入 `data/client_spool.jsonl`，连接恢复后批量加密上传并清空。
 - 心跳保活：周期上报节点 ID、系统、架构、监听端口等状态。
-- 隐身模式：预留 `start_stealth_backend` 后端入口。生产级隐身模式需要 raw socket/WinDivert/iptables/nftables 等特权能力配合，用于捕获 SYN 包并阻断本机 RST 响应。当前构建默认在后端不可用时降级为普通 TCP 诱捕。
+- 隐身模式：Linux PoC 已通过 raw TCP socket 捕获 SYN 包，并通过 `scripts/linux_stealth_setup.sh` 配置 iptables/nftables 阻断 RST。Windows 生产级隐身模式需要 WinDivert/NDIS 后端。
 
 ## 4. 服务端设计
 
@@ -121,7 +121,7 @@ magic("PHP1") || nonce(16 bytes) || ciphertext || hmac_tag(32 bytes)
 - 服务端：Python 标准库 + SQLite，Windows/Linux/macOS 均可运行。
 - 客户端：Rust release 构建启用 LTO 和 strip，目标为单二进制部署。
 - Windows 托盘、自启动与隐身捕获属于平台 API 能力，当前项目保留模块边界和部署说明，实际生产可接入 Shell_NotifyIcon、注册表启动项、WinDivert/NDIS 后端。
-- Linux 信创环境可通过 systemd 自启动、nftables/iptables 阻断 RST、raw socket 捕获 SYN。
+- Linux 信创环境可通过 systemd 自启动、nftables/iptables 阻断 RST、raw socket 捕获 SYN。Linux 隐身模式 PoC 已具备真实捕获链路。
 
 ## 10. 安全边界
 
