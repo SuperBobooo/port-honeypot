@@ -618,24 +618,28 @@ fn start_stealth_backend(
     running: Arc<AtomicBool>,
     spool_lock: Arc<Mutex<()>>,
 ) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows_stealth::start(config, running, spool_lock)
+    }
     #[cfg(target_os = "linux")]
     {
         linux_stealth::start(config, running, spool_lock)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let cfg = config.lock().unwrap().clone();
         log_line(
             &cfg,
             "WARN",
-            "stealth SYN backend is only implemented for Linux in this PoC build; falling back if enabled",
+            "stealth SYN backend is not implemented for this platform; falling back if enabled",
         );
         let _ = (running, spool_lock);
         false
     }
 }
 
-#[cfg(any(test, target_os = "linux"))]
+#[cfg(any(test, target_os = "windows", target_os = "linux"))]
 fn parse_ipv4_syn_packet(packet: &[u8], listen_ports: &[u16]) -> Option<AttackEvent> {
     if packet.len() < 40 {
         return None;
@@ -1106,6 +1110,223 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+#[cfg(target_os = "windows")]
+mod windows_stealth {
+    use super::*;
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_void};
+
+    type Handle = *mut c_void;
+    type WinDivertOpenFn = unsafe extern "system" fn(*const c_char, u32, i16, u64) -> Handle;
+    type WinDivertRecvFn = unsafe extern "system" fn(Handle, *mut c_void, u32, *mut u32, *mut WinDivertAddress) -> i32;
+    type WinDivertSendFn =
+        unsafe extern "system" fn(Handle, *const c_void, u32, *mut u32, *const WinDivertAddress) -> i32;
+    type WinDivertCloseFn = unsafe extern "system" fn(Handle) -> i32;
+
+    const WINDIVERT_LAYER_NETWORK: u32 = 0;
+    const FILTER: &str = "inbound and !impostor and ip and tcp.Syn and !tcp.Ack";
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct WinDivertAddress {
+        timestamp: i64,
+        flags: u32,
+        reserved2: u32,
+        data: [u8; 64],
+    }
+
+    struct WinDivert {
+        module: Handle,
+        open: WinDivertOpenFn,
+        recv: WinDivertRecvFn,
+        send: WinDivertSendFn,
+        close: WinDivertCloseFn,
+    }
+
+    struct WinDivertHandle(Handle);
+
+    unsafe impl Send for WinDivert {}
+    unsafe impl Send for WinDivertHandle {}
+
+    unsafe extern "system" {
+        fn LoadLibraryA(name: *const c_char) -> Handle;
+        fn GetProcAddress(module: Handle, name: *const c_char) -> *mut c_void;
+        fn FreeLibrary(module: Handle) -> i32;
+    }
+
+    impl Drop for WinDivert {
+        fn drop(&mut self) {
+            if !self.module.is_null() {
+                unsafe {
+                    FreeLibrary(self.module);
+                }
+            }
+        }
+    }
+
+    pub fn start(
+        config: Arc<Mutex<ClientConfig>>,
+        running: Arc<AtomicBool>,
+        spool_lock: Arc<Mutex<()>>,
+    ) -> bool {
+        let cfg = config.lock().unwrap().clone();
+        let api = match WinDivert::load() {
+            Ok(api) => api,
+            Err(err) => {
+                log_line(
+                    &cfg,
+                    "ERROR",
+                    &format!(
+                        "failed to load WinDivert.dll: {}; place WinDivert.dll and WinDivert64.sys beside the client exe and run as Administrator",
+                        err
+                    ),
+                );
+                return false;
+            }
+        };
+
+        let filter = CString::new(FILTER).expect("static WinDivert filter is valid");
+        let handle = unsafe { (api.open)(filter.as_ptr(), WINDIVERT_LAYER_NETWORK, 0, 0) };
+        if is_invalid_handle(handle) {
+            log_line(
+                &cfg,
+                "ERROR",
+                &format!(
+                    "failed to open WinDivert handle: {}; run as Administrator and verify WinDivert64.sys is available",
+                    io::Error::last_os_error()
+                ),
+            );
+            return false;
+        }
+
+        log_line(
+            &cfg,
+            "INFO",
+            "Windows WinDivert stealth SYN backend started; inbound SYN packets for configured ports will be dropped",
+        );
+        let divert_handle = WinDivertHandle(handle);
+        thread::spawn(move || capture_loop(api, divert_handle, config, running, spool_lock));
+        true
+    }
+
+    impl WinDivert {
+        fn load() -> io::Result<Self> {
+            let name = CString::new("WinDivert.dll").unwrap();
+            let module = unsafe { LoadLibraryA(name.as_ptr()) };
+            if module.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let api = unsafe {
+                let open = load_symbol::<WinDivertOpenFn>(module, b"WinDivertOpen\0")?;
+                let recv = load_symbol::<WinDivertRecvFn>(module, b"WinDivertRecv\0")?;
+                let send = load_symbol::<WinDivertSendFn>(module, b"WinDivertSend\0")?;
+                let close = load_symbol::<WinDivertCloseFn>(module, b"WinDivertClose\0")?;
+                WinDivert {
+                    module,
+                    open,
+                    recv,
+                    send,
+                    close,
+                }
+            };
+            Ok(api)
+        }
+    }
+
+    unsafe fn load_symbol<T: Copy>(module: Handle, name: &[u8]) -> io::Result<T> {
+        let ptr = GetProcAddress(module, name.as_ptr() as *const c_char);
+        if ptr.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(std::mem::transmute_copy(&ptr))
+    }
+
+    fn capture_loop(
+        api: WinDivert,
+        handle: WinDivertHandle,
+        config: Arc<Mutex<ClientConfig>>,
+        running: Arc<AtomicBool>,
+        spool_lock: Arc<Mutex<()>>,
+    ) {
+        debug_assert_eq!(std::mem::size_of::<WinDivertAddress>(), 80);
+        let mut packet = [0u8; 65535];
+        let mut recent: HashMap<(String, u16, u16), u64> = HashMap::new();
+        while running.load(Ordering::SeqCst) {
+            let mut packet_len = 0u32;
+            let mut addr = unsafe { std::mem::zeroed::<WinDivertAddress>() };
+            let ok = unsafe {
+                (api.recv)(
+                    handle.0,
+                    packet.as_mut_ptr() as *mut c_void,
+                    packet.len() as u32,
+                    &mut packet_len,
+                    &mut addr,
+                )
+            };
+            if ok == 0 {
+                let cfg = config.lock().unwrap().clone();
+                log_line(&cfg, "WARN", &format!("WinDivertRecv failed: {}", io::Error::last_os_error()));
+                thread::sleep(Duration::from_millis(100));
+                continue;
+            }
+
+            let cfg = config.lock().unwrap().clone();
+            let bytes = &packet[..packet_len as usize];
+            let Some(event) = parse_ipv4_syn_packet(bytes, &cfg.listen_ports) else {
+                reinject_packet(&api, handle.0, bytes, &addr, &cfg);
+                continue;
+            };
+
+            let key = (
+                event.source_ip.clone(),
+                event.source_port.unwrap_or_default(),
+                event.target_port,
+            );
+            let now = now_ts();
+            if recent.get(&key).is_some_and(|last| now.saturating_sub(*last) < 2) {
+                continue;
+            }
+            recent.insert(key, now);
+            if recent.len() > 4096 {
+                recent.retain(|_, last| now.saturating_sub(*last) < 30);
+            }
+
+            if let Err(err) = append_event(&cfg, &spool_lock, &event) {
+                log_line(&cfg, "ERROR", &format!("failed to spool WinDivert stealth event: {}", err));
+            } else {
+                local_attack_notice(&cfg, &event);
+            }
+        }
+        unsafe {
+            (api.close)(handle.0);
+        }
+    }
+
+    fn reinject_packet(api: &WinDivert, handle: Handle, packet: &[u8], addr: &WinDivertAddress, cfg: &ClientConfig) {
+        let mut send_len = 0u32;
+        let ok = unsafe {
+            (api.send)(
+                handle,
+                packet.as_ptr() as *const c_void,
+                packet.len() as u32,
+                &mut send_len,
+                addr,
+            )
+        };
+        if ok == 0 {
+            log_line(
+                cfg,
+                "WARN",
+                &format!("WinDivertSend passthrough failed: {}", io::Error::last_os_error()),
+            );
+        }
+    }
+
+    fn is_invalid_handle(handle: Handle) -> bool {
+        handle.is_null() || handle == (-1isize) as Handle
+    }
 }
 
 #[cfg(target_os = "linux")]

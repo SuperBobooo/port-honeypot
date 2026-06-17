@@ -82,6 +82,11 @@ def main() -> None:
             target_dir = out_root / name
             target_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(binary, target_dir / binary.name)
+            for runtime in windivert_runtime_files(name):
+                shutil.copy2(runtime, target_dir / runtime.name)
+            license_file = windivert_license_file(name)
+            if license_file is not None:
+                shutil.copy2(license_file, target_dir / "WinDivert-LICENSE.txt")
             (target_dir / "client_config.json").write_text(
                 json.dumps(client_config, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -98,6 +103,35 @@ def current_platform() -> str:
     if sys.platform == "darwin":
         return "macos-x64"
     return "linux-x64"
+
+
+def windivert_runtime_files(platform: str) -> list[Path]:
+    if platform != "windows-x64":
+        return []
+    roots = [
+        ROOT / "third_party" / "WinDivert-2.2.2-A" / "WinDivert-2.2.2-A" / "x64",
+        ROOT / "third_party" / "WinDivert-2.2.2-A" / "x64",
+    ]
+    for root in roots:
+        dll = root / "WinDivert.dll"
+        sys = root / "WinDivert64.sys"
+        if dll.exists() and sys.exists():
+            return [dll, sys]
+    return []
+
+
+def windivert_license_file(platform: str) -> Path | None:
+    if platform != "windows-x64":
+        return None
+    roots = [
+        ROOT / "third_party" / "WinDivert-2.2.2-A" / "WinDivert-2.2.2-A",
+        ROOT / "third_party" / "WinDivert-2.2.2-A",
+    ]
+    for root in roots:
+        candidate = root / "LICENSE"
+        if candidate.exists():
+            return candidate
+    return None
 
 
 if __name__ == "__main__":

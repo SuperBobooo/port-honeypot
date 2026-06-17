@@ -70,9 +70,13 @@ python tools/build_clients.py --all --server-host 192.168.1.10 --ports 21,22,23,
 
 ```text
 dist/client-bin/windows-x64/porthoneypot-client.exe
+dist/client-bin/windows-x64/WinDivert.dll
+dist/client-bin/windows-x64/WinDivert64.sys
 dist/client-bin/linux-x64/porthoneypot-client
 dist/client-bin/linux-arm64/porthoneypot-client
 ```
+
+Windows 隐身模式依赖 WinDivert 运行时。将官方 `WinDivert-2.2.2-A` 解压到 `third_party/` 后，构建脚本会自动复制 x64 运行时文件。
 
 ## 4. 客户端运行
 
@@ -164,7 +168,7 @@ sudo setcap cap_net_raw+ep ./porthoneypot-client
 sudo scripts/linux_stealth_setup.sh cleanup 22,80,3389
 ```
 
-Windows 生产实现建议接入 WinDivert 或 NDIS 过滤驱动，用户态程序负责解析 SYN 并上报服务端。
+Windows 隐身模式已接入 WinDivert 后端。运行目录需包含 `WinDivert.dll` 和 `WinDivert64.sys`，并使用管理员权限启动客户端。详见 `docs/windows_stealth_windivert.md`。
 
 当前客户端默认启用 `stealth_fallback_to_tcp`：隐身后端不可用时降级为普通 TCP 诱捕，保证实训环境可运行。严格隐身测试建议设置为 `false`。
 

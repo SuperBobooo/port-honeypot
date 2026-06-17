@@ -94,6 +94,11 @@ class ClientBuilder:
                 if candidate.exists():
                     zf.write(candidate, f"{name}/bin/{platform_name}/{binary_name}")
                     included_binaries.append(platform_name)
+                for runtime in windivert_runtime_files(platform_name):
+                    zf.write(runtime, f"{name}/bin/{platform_name}/{runtime.name}")
+                license_path = windivert_license_file(platform_name)
+                if license_path is not None:
+                    zf.write(license_path, f"{name}/third_party/WinDivert-LICENSE.txt")
 
         return {
             "ok": True,
@@ -116,7 +121,9 @@ class ClientBuilder:
 4. Windows 平台可运行 tools/client_gui.ps1 打开客户端桌面管理器和托盘菜单。
 
 隐身模式说明:
-隐身 SYN 捕获需要管理员/root 权限和平台包捕获/RST 阻断后端。默认启用 stealth_fallback_to_tcp，未检测到后端时会降级为普通 TCP 诱捕监听。
+Windows 隐身模式需要管理员权限，并要求 porthoneypot-client.exe 同目录存在 WinDivert.dll 与 WinDivert64.sys。
+Linux 隐身模式需要 root/CAP_NET_RAW 与 RST 阻断规则。
+默认启用 stealth_fallback_to_tcp，未检测到后端时会降级为普通 TCP 诱捕监听。
 """
 
 
@@ -129,3 +136,32 @@ def copy_embedded_config(client_source: str | Path, config: dict[str, Any]) -> P
         shutil.copy2(target, backup)
     target.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
     return target
+
+
+def windivert_runtime_files(platform: str) -> list[Path]:
+    if platform != "windows-x64":
+        return []
+    roots = [
+        Path("third_party") / "WinDivert-2.2.2-A" / "WinDivert-2.2.2-A" / "x64",
+        Path("third_party") / "WinDivert-2.2.2-A" / "x64",
+    ]
+    for root in roots:
+        dll = root / "WinDivert.dll"
+        sys = root / "WinDivert64.sys"
+        if dll.exists() and sys.exists():
+            return [dll, sys]
+    return []
+
+
+def windivert_license_file(platform: str) -> Path | None:
+    if platform != "windows-x64":
+        return None
+    roots = [
+        Path("third_party") / "WinDivert-2.2.2-A" / "WinDivert-2.2.2-A",
+        Path("third_party") / "WinDivert-2.2.2-A",
+    ]
+    for root in roots:
+        candidate = root / "LICENSE"
+        if candidate.exists():
+            return candidate
+    return None

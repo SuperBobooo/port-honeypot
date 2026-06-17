@@ -12,7 +12,7 @@
 
 支持 Linux x86_64/arm64，包括 Debian、Ubuntu、CentOS、统信 UOS、银河麒麟等发行版。需要 root 权限或 `CAP_NET_RAW` 能力。
 
-Windows 隐身模式需要 WinDivert/NDIS 驱动，不在本 PoC 范围内。
+Windows 隐身模式已通过 WinDivert 后端实现，详见 `docs/windows_stealth_windivert.md`。
 
 ## 2. 准备客户端配置
 

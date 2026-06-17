@@ -13,3 +13,4 @@ __pycache__/
 *.pyc
 *.bak
 rustup-init.exe
+third_party/

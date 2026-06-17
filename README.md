@@ -137,7 +137,7 @@ docs/                    设计、部署、开发、测试与实训文档
 
 ## 说明
 
-一般 TCP 诱捕模式完整可运行。Linux 隐身 SYN 捕获 PoC 已实现，配合 `scripts/linux_stealth_setup.sh` 可阻断 RST 并捕获 SYN 探测。Windows 生产级隐身模式仍需 WinDivert/NDIS 驱动。详见 `docs/linux_stealth_poc.md`、`docs/system_design.md` 与 `docs/deployment_guide.md`。
+一般 TCP 诱捕模式完整可运行。Windows 隐身模式已接入 WinDivert 后端，Linux 隐身 SYN 捕获 PoC 已实现。Windows 运行时需要 `WinDivert.dll`、`WinDivert64.sys` 和管理员权限；Linux 需要配合 `scripts/linux_stealth_setup.sh` 阻断 RST。详见 `docs/windows_stealth_windivert.md`、`docs/linux_stealth_poc.md`、`docs/system_design.md` 与 `docs/deployment_guide.md`。
 
 ## 验证
 

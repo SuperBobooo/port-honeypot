@@ -114,6 +114,14 @@ Windows 托盘与本地通知：
 5. 点击 “Install autostart” 和 “Uninstall autostart”，确认命令输出无错误。
 6. 关闭窗口时应隐藏到托盘；托盘菜单 Exit 应出现退出确认。
 
+Windows 隐身模式：
+
+1. 确认客户端运行目录包含 `porthoneypot-client.exe`、`WinDivert.dll`、`WinDivert64.sys` 和 `client_config.json`。
+2. 在 `client_config.json` 设置 `stealth_mode=true`、`stealth_fallback_to_tcp=false`、`listen_ports=[22,80,3389]`。
+3. 使用管理员 PowerShell 执行 `.\porthoneypot-client.exe run`。
+4. 从另一台机器执行 `nmap -sS -Pn -p 22,80,3389 <windows-client-ip>`。
+5. 扫描端应表现为 `filtered` 或无响应，服务端管理台应出现 `mode=stealth` 的 SYN 探测日志。
+
 自动更新：
 
 1. 运行 `python tools\build_clients.py --target windows-x64 --server-host 127.0.0.1`。
@@ -134,8 +142,8 @@ Linux 隐身模式 PoC：
 
 | 平台 | 服务端 | 客户端普通模式 | 客户端隐身模式 |
 | --- | --- | --- | --- |
-| Windows 7+ x64 | 支持 Python 3.8+ 时可运行 | Rust 目标支持后可运行 | 需 WinDivert/NDIS 后端 |
-| Windows Server 2008+ x64 | 支持 Python 3.8+ 时可运行 | Rust 目标支持后可运行 | 需 WinDivert/NDIS 后端 |
+| Windows 10/11 x64 | 支持 Python 3.8+ 时可运行 | 支持 | WinDivert 后端，需管理员权限 |
+| Windows 7+ / Windows Server 2008+ x64 | 支持 Python 3.8+ 时可运行 | Rust 目标支持后可运行 | 需实机验证 WinDivert 驱动兼容性 |
 | Debian/CentOS x64 | 支持 | 支持 | 需 root + raw socket + RST 阻断 |
 | 统信 UOS/银河麒麟 x64/arm64 | 支持 | 支持 | 需 root + 系统防火墙规则 |
 | macOS 10.15+ | 支持 | 支持 | 需 BPF/pf 后端 |
@@ -144,4 +152,4 @@ Linux 隐身模式 PoC：
 
 - 当前仓库没有附带预编译二进制，需本机安装 Rust 后构建。
 - Linux 隐身 SYN 捕获 PoC 已实现，但仍需在真实 Linux/信创系统上完成 raw socket 与 RST 阻断实机验收。
-- Windows 生产级隐身模式仍需 WinDivert/NDIS 后端；当前 Windows 侧提供普通 TCP 蜜罐、桌面 GUI、托盘控制和本地通知。
+- Windows 隐身模式已接入 WinDivert 后端，但 Windows 7/Server 2008 驱动兼容性仍需单独实机验证。

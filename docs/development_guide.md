@@ -105,7 +105,7 @@ python tools\publish_update.py --platform windows-x64 --version 0.1.1
 隐身模式生产化建议：
 
 - Linux：raw socket 或 AF_PACKET 捕获 SYN，iptables/nftables 阻断 RST。
-- Windows：WinDivert 捕获和阻断，或 NDIS 过滤驱动。
+- Windows：当前已接入 WinDivert 捕获和阻断；更深度的企业终端管控场景可扩展 NDIS 过滤驱动。
 - macOS：BPF/pf 组合。
 
 托盘与本地通知建议：
