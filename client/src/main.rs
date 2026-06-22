@@ -71,6 +71,7 @@ struct ListenerManager {
     config: Arc<Mutex<ClientConfig>>,
     running: Arc<AtomicBool>,
     spool_lock: Arc<Mutex<()>>,
+    capture_only: AtomicBool,
     enabled: AtomicBool,
     listeners: Mutex<HashMap<u16, Arc<AtomicBool>>>,
 }
@@ -81,12 +82,22 @@ impl ListenerManager {
             config,
             running,
             spool_lock,
+            capture_only: AtomicBool::new(false),
             enabled: AtomicBool::new(false),
             listeners: Mutex::new(HashMap::new()),
         }
     }
 
+    fn set_capture_only(&self, capture_only: bool) {
+        self.capture_only.store(capture_only, Ordering::SeqCst);
+    }
+
     fn start_all(&self) {
+        if self.capture_only.load(Ordering::SeqCst) {
+            let cfg = self.config.lock().unwrap().clone();
+            log_line(&cfg, "INFO", "capture-only stealth mode active; TCP listeners remain disabled");
+            return;
+        }
         self.enabled.store(true, Ordering::SeqCst);
         for port in self.desired_ports() {
             self.start_port(port);
@@ -95,6 +106,11 @@ impl ListenerManager {
 
     fn stop_all(&self) {
         self.enabled.store(false, Ordering::SeqCst);
+        if self.capture_only.load(Ordering::SeqCst) {
+            let cfg = self.config.lock().unwrap().clone();
+            log_line(&cfg, "INFO", "capture-only stealth mode active; no TCP listeners to stop");
+            return;
+        }
         self.stop_all_listeners();
         let cfg = self.config.lock().unwrap().clone();
         log_line(&cfg, "INFO", "all listeners stopped by control command");
@@ -108,6 +124,9 @@ impl ListenerManager {
             let mut cfg = self.config.lock().unwrap();
             cfg.listen_ports = ports.clone();
             log_line(&cfg, "INFO", &format!("listen ports updated to {:?}", cfg.listen_ports));
+        }
+        if self.capture_only.load(Ordering::SeqCst) {
+            return;
         }
         if !self.enabled.load(Ordering::SeqCst) {
             return;
@@ -256,6 +275,7 @@ fn main() -> io::Result<()> {
 
     if config.stealth_mode {
         let ok = start_stealth_backend(shared_config.clone(), running.clone(), spool_lock.clone());
+        listener_manager.set_capture_only(ok);
         if !ok && config.stealth_fallback_to_tcp {
             log_line(&config, "WARN", "stealth backend unavailable, falling back to general TCP honeypot mode");
             listener_manager.start_all();
