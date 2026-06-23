@@ -71,7 +71,7 @@ nft_setup() {
   nft delete table inet porthoneypot >/dev/null 2>&1 || true
   nft add table inet porthoneypot
   nft add chain inet porthoneypot output '{ type filter hook output priority 0; policy accept; }'
-  nft add rule inet porthoneypot output tcp sport "{ ${port_set} }" tcp flags rst drop comment '"porthoneypot-stealth-rst-drop"'
+  nft add rule inet porthoneypot output tcp sport "{ ${port_set} }" tcp flags '&' rst == rst drop comment '"porthoneypot-stealth-rst-drop"'
   echo "added: nftables RST drop for source ports ${port_set}"
 }
 
